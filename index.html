@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>gp-forge · 高斯过程回归实验室</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --line:#e4e7ec; --line2:#eef0f4;
+    --fg:#1f2328; --fg2:#5b6472; --fg3:#8b95a3;
+    --blue:#2563eb; --blue-w:#eaf1ff; --red:#d92d20; --green:#067647; --amber:#b54708;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 64px}
+  header h1{margin:0 0 6px;font-size:24px;letter-spacing:.3px}
+  header p{margin:0 0 22px;color:var(--fg2);font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:15px}
+  .card .sub{margin:0 0 14px;color:var(--fg3);font-size:12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button{padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--fg);font-size:13px;cursor:pointer}
+  button:hover{border-color:var(--blue);color:var(--blue)}
+  button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  button.primary:hover{filter:brightness(1.06);color:#fff}
+  .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;border:1px solid var(--line);color:var(--fg2);cursor:pointer;margin-right:6px}
+  .pill:hover{border-color:var(--blue);color:var(--blue)}
+  .kv{display:flex;gap:22px;flex-wrap:wrap;margin-top:12px}
+  .kv div{font-size:12px;color:var(--fg3)}
+  .kv b{display:block;font:600 16px/1.4 ui-monospace,Menlo,Consolas,monospace;color:var(--fg)}
+  canvas{display:block;width:100%}
+  #plot{cursor:crosswalk;height:360px;cursor:crosshair}
+  #mlcv{height:140px}
+  .sl{display:grid;grid-template-columns:96px 1fr 84px;gap:10px;align-items:center;margin-bottom:8px}
+  .sl label{font-size:12px;color:var(--fg2)}
+  .sl .v{font:12px ui-monospace,Menlo,Consolas,monospace;color:var(--fg);text-align:right}
+  input[type=range]{width:100%;accent-color:var(--blue)}
+  table{border-collapse:collapse;font:11px ui-monospace,Menlo,Consolas,monospace}
+  td,th{padding:3px 6px;text-align:right;white-space:nowrap}
+  thead th{color:var(--fg3);font-weight:500}
+  tbody th{color:var(--fg2);font-weight:500;text-align:right}
+  .heat{border-radius:3px}
+  table.chk{width:100%;font:13px/1.5 -apple-system,"Segoe UI","PingFang SC",sans-serif}
+  table.chk td{text-align:left;white-space:normal;padding:8px 8px;border-bottom:1px solid var(--line2);vertical-align:top}
+  table.chk td.d{font:12px ui-monospace,Menlo,Consolas,monospace;color:var(--fg2);width:300px}
+  table.chk td.s{width:72px}
+  .ok{color:var(--green);font-weight:600}
+  .bad{color:var(--red);font-weight:600}
+  .banner{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px;background:#ecfdf3;border:1px solid #abefc6;color:var(--green)}
+  .banner.bad{background:#fef3f2;border-color:#fecdca;color:var(--red)}
+  .cols{display:grid;grid-template-columns:1.15fr 1fr;gap:16px}
+  @media(max-width:900px){.cols{grid-template-columns:1fr}}
+  .note{color:var(--fg3);font-size:12px;margin-top:10px}
+  .mono{font:12px ui-monospace,Menlo,Consolas,monospace}
+  .lg{display:flex;gap:14px;font-size:11px;color:var(--fg2);margin-top:8px;flex-wrap:wrap}
+  .lg i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:5px;border-radius:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>gp-forge</h1>
+  <p>高斯过程回归实验室 · RBF 核 / Cholesky 推断 / 边际似然解析梯度 / 超参梯度上升 · 零依赖单文件 · 8 条不变量浏览器内自检</p>
+</header>
+
+<div class="card">
+  <h2>后验回归</h2>
+  <p class="sub">在画布上点击可添加数据点（Shift+点击删除最近的点）。蓝线为后验均值 μ，蓝色带为 ±2σ，灰线为后验采样。</p>
+  <canvas id="plot"></canvas>
+  <div class="lg">
+    <span><i style="background:#2563eb"></i>后验均值 μ(x)</span>
+    <span><i style="background:#9dc0ff"></i>95% 置信带 ±2σ</span>
+    <span><i style="background:#1f2328"></i>观测数据</span>
+    <span><i style="background:#b9c0cc"></i>后验采样函数</span>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <span class="pill" data-d="sin">正弦合成数据</span>
+    <span class="pill" data-d="sparse">稀疏 4 点</span>
+    <span class="pill" data-d="step">阶跃</span>
+    <button id="btn-clear">清空</button>
+    <button id="btn-undo">删除最后一点</button>
+    <label class="mono" style="color:var(--fg2)"><input type="checkbox" id="cb-samp" checked> 显示后验采样</label>
+  </div>
+  <div class="kv" id="stat"></div>
+</div>
+
+<div class="cols">
+  <div class="card">
+    <h2>超参数</h2>
+    <p class="sub">RBF 核 k(x,z) = σ<sub>f</sub>²·exp(−(x−z)² / 2ℓ²)，观测噪声 σ<sub>n</sub>。滑动条为对数刻度。</p>
+    <div class="sl"><label>长度尺度 ℓ</label><input type="range" id="sl-ls" min="0" max="1000" value="500"><span class="v" id="v-ls"></span></div>
+    <div class="sl"><label>信号幅度 σ<sub>f</sub></label><input type="range" id="sl-sf" min="0" max="1000" value="500"><span class="v" id="v-sf"></span></div>
+    <div class="sl"><label>噪声 σ<sub>n</sub></label><input type="range" id="sl-sn" min="0" max="1000" value="250"><span class="v" id="v-sn"></span></div>
+    <div class="row" style="margin-top:6px">
+      <button class="primary" id="btn-opt">多起点优化超参</button>
+      <span class="mono" id="optinfo" style="color:var(--fg2)"></span>
+    </div>
+    <canvas id="mlcv"></canvas>
+    <p class="note" id="mlnote">点击「梯度上升优化超参」后，这里会画出边际似然 log p(y|X,θ) 的上升曲线（回溯线搜索保证单调不减）。</p>
+  </div>
+
+  <div class="card">
+    <h2>核矩阵 K + σ<sub>n</sub>²I</h2>
+    <p class="sub">按 x 排序后的训练核矩阵，颜色深浅 = 协方差大小。</p>
+    <div style="overflow-x:auto" id="matK"></div>
+    <p class="note" id="kernote"></p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>不变量自检</h2>
+  <p class="sub">全部在浏览器内实时计算，与无头 Node 断言同一份 engine 代码。</p>
+  <div id="banner"></div>
+  <table class="chk"><tbody id="chk"></tbody></table>
+</div>
+</div>
+
+<script id="engine">
+(function () {
+  'use strict';
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function rnorm(rng) {
+    var u1 = rng(), u2 = rng();
+    if (u1 < 1e-15) u1 = 1e-15;
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+  function dot(a, b) { var s = 0, i; for (i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+
+  // ---------- 核 ----------
+  function kernelMatrix(X, Z, p) {
+    var n = X.length, m = Z.length, K = new Array(n), i, j, r;
+    for (i = 0; i < n; i++) {
+      K[i] = new Array(m);
+      for (j = 0; j < m; j++) { r = X[i] - Z[j]; K[i][j] = p.sf * p.sf * Math.exp(-0.5 * r * r / (p.ls * p.ls)); }
+    }
+    return K;
+  }
+  function addNoise(K, sn) {
+    var i, R = new Array(K.length);
+    for (i = 0; i < K.length; i++) { R[i] = K[i].slice(); R[i][i] += sn * sn; }
+    return R;
+  }
+
+  // ---------- 线性代数 ----------
+  function cholesky(A) {
+    var n = A.length, L = new Array(n), i, j, k, s;
+    for (i = 0; i < n; i++) { L[i] = new Array(n); for (j = 0; j < n; j++) L[i][j] = 0; }
+    for (i = 0; i < n; i++) {
+      for (j = 0; j <= i; j++) {
+        s = A[i][j];
+        for (k = 0; k < j; k++) s -= L[i][k] * L[j][k];
+        if (i === j) { if (s <= 0) return null; L[i][i] = Math.sqrt(s); }
+        else L[i][j] = s / L[j][j];
+      }
+    }
+    return L;
+  }
+  function cholJitter(A) {
+    var n = A.length, i, j, B, L, jit, jits = [0, 1e-11, 1e-9, 1e-7, 1e-5, 1e-3];
+    for (var t = 0; t < jits.length; t++) {
+      jit = jits[t];
+      B = new Array(n);
+      for (i = 0; i < n; i++) { B[i] = A[i].slice(); B[i][i] += jit; }
+      L = cholesky(B);
+      if (L) return { L: L, jitter: jit };
+    }
+    return null;
+  }
+  function forwardSolve(L, b) {
+    var n = L.length, y = new Array(n), i, k, s;
+    for (i = 0; i < n; i++) { s = b[i]; for (k = 0; k < i; k++) s -= L[i][k] * y[k]; y[i] = s / L[i][i]; }
+    return y;
+  }
+  function backSolve(L, y) {
+    var n = L.length, x = new Array(n), i, k, s;
+    for (i = n - 1; i >= 0; i--) { s = y[i]; for (k = i + 1; k < n; k++) s -= L[k][i] * x[k]; x[i] = s / L[i][i]; }
+    return x;
+  }
+  function cholSolve(L, b) { return backSolve(L, forwardSolve(L, b)); }
+  function cholLogDet(L) { var s = 0, i; for (i = 0; i < L.length; i++) s += Math.log(L[i][i]); return 2 * s; }
+  function inverseFromChol(L) {
+    var n = L.length, Inv = new Array(n), i, j, e = new Array(n), col;
+    for (i = 0; i < n; i++) { Inv[i] = new Array(n); }
+    for (j = 0; j < n; j++) {
+      for (i = 0; i < n; i++) e[i] = (i === j) ? 1 : 0;
+      col = cholSolve(L, e);
+      for (i = 0; i < n; i++) Inv[i][j] = col[i];
+    }
+    return Inv;
+  }
+  // 高斯消元（部分选主元），仅用于交叉验证 Cholesky 解
+  function gaussSolve(A0, b0) {
+    var n = A0.length, i, j, k, A = new Array(n), b = b0.slice(), piv, tmp, maxr, f;
+    for (i = 0; i < n; i++) A[i] = A0[i].slice();
+    for (k = 0; k < n; k++) {
+      maxr = k;
+      for (i = k + 1; i < n; i++) if (Math.abs(A[i][k]) > Math.abs(A[maxr][k])) maxr = i;
+      if (maxr !== k) { tmp = A[k]; A[k] = A[maxr]; A[maxr] = tmp; tmp = b[k]; b[k] = b[maxr]; b[maxr] = tmp; }
+      piv = A[k][k];
+      if (piv === 0) return null;
+      for (i = k + 1; i < n; i++) {
+        f = A[i][k] / piv;
+        if (f === 0) continue;
+        for (j = k; j < n; j++) A[i][j] -= f * A[k][j];
+        b[i] -= f * b[k];
+      }
+    }
+    var x = new Array(n);
+    for (i = n - 1; i >= 0; i--) { var s = b[i]; for (j = i + 1; j < n; j++) s -= A[i][j] * x[j]; x[i] = s / A[i][i]; }
+    return x;
+  }
+
+  // ---------- GP 后验 ----------
+  function gpFit(X, y, p) {
+    var n = X.length, K = kernelMatrix(X, X, p), Ky = addNoise(K, p.sn), ch = cholJitter(Ky);
+    if (!ch) return null;
+    var alpha = cholSolve(ch.L, y), m = null, v = null;
+    return { K: K, Ky: Ky, L: ch.L, jitter: ch.jitter, alpha: alpha, n: n };
+  }
+  // 返回 {mu, var, v}（v = L⁻¹K*，用于算后验协方差）
+  function gpPredict(Xtr, y, Xte, p, fit) {
+    var f = fit || gpFit(Xtr, y, p);
+    if (!f) return null;
+    var n = Xtr.length, m = Xte.length, Ks = kernelMatrix(Xtr, Xte, p), i, j, s;
+    var mu = new Array(m), va = new Array(m), v = new Array(n);
+    for (i = 0; i < n; i++) v[i] = new Array(m);
+    for (j = 0; j < m; j++) {
+      var col = new Array(n);
+      for (i = 0; i < n; i++) col[i] = Ks[i][j];
+      var vj = forwardSolve(f.L, col);
+      s = 0; for (i = 0; i < n; i++) { v[i][j] = vj[i]; s += vj[i] * vj[i]; }
+      mu[j] = 0; for (i = 0; i < n; i++) mu[j] += Ks[i][j] * f.alpha[i];
+      va[j] = p.sf * p.sf - s;
+      if (va[j] < 0) va[j] = 0;
+    }
+    return { mu: mu, var: va, v: v, fit: f };
+  }
+  function gpPosteriorCov(Xte, p, pred) {
+    var m = Xte.length, Kss = kernelMatrix(Xte, Xte, p), i, j, k, s, C = new Array(m);
+    for (i = 0; i < m; i++) {
+      C[i] = new Array(m);
+      for (j = 0; j < m; j++) {
+        s = 0; for (k = 0; k < pred.v.length; k++) s += pred.v[k][i] * pred.v[k][j];
+        C[i][j] = Kss[i][j] - s;
+        if (i === j && C[i][j] < 0) C[i][j] = 0;
+      }
+    }
+    return C;
+  }
+  // 从多元正态采样：x = μ + L z
+  function mvnSample(mu, C, nSamp, rng) {
+    var m = mu.length, ch = cholJitter(C), L = ch.L, out = new Array(nSamp), t, i, j, s, z;
+    for (t = 0; t < nSamp; t++) {
+      var x = new Array(m), zv = new Array(m);
+      for (i = 0; i < m; i++) zv[i] = rnorm(rng);
+      for (i = 0; i < m; i++) { s = 0; for (j = 0; j <= i; j++) s += L[i][j] * zv[j]; x[i] = mu[i] + s; }
+      out[t] = x;
+    }
+    return out;
+  }
+
+  // ---------- 边际似然与解析梯度（对 log ℓ / log σ_f / log σ_n） ----------
+  function logML(X, y, p, wantGrad) {
+    var n = X.length, K = kernelMatrix(X, X, p), Ky = addNoise(K, p.sn), ch = cholJitter(Ky), i, j;
+    var alpha = cholSolve(ch.L, y);
+    var val = -0.5 * dot(y, alpha) - 0.5 * cholLogDet(ch.L) - 0.5 * n * Math.log(2 * Math.PI);
+    if (!wantGrad) return { val: val, grad: null };
+    var Kinv = inverseFromChol(ch.L), g = [0, 0, 0], r, dK;
+    // W = ααᵀ − K_y⁻¹
+    for (i = 0; i < n; i++) {
+      for (j = 0; j < n; j++) {
+        r = X[i] - X[j];
+        var w = alpha[i] * alpha[j] - Kinv[i][j];
+        // ∂K/∂logℓ = K·r²/ℓ²
+        dK = K[i][j] * r * r / (p.ls * p.ls);
+        g[0] += w * dK;
+        // ∂K/∂logσ_f = 2K
+        g[1] += w * 2 * K[i][j];
+      }
+      // ∂K_y/∂logσ_n = 2σ_n² 仅对角线
+      g[2] += (alpha[i] * alpha[i] - Kinv[i][i]) * 2 * p.sn * p.sn;
+    }
+    return { val: val, grad: [0.5 * g[0], 0.5 * g[1], 0.5 * g[2]] };
+  }
+  function paramsFromTheta(th) { return { ls: Math.exp(th[0]), sf: Math.exp(th[1]), sn: Math.exp(th[2]) }; }
+  function thetaFromParams(p) { return [Math.log(p.ls), Math.log(p.sf), Math.log(p.sn)]; }
+
+  // 回溯线搜索梯度上升：保证边际似然单调不减
+  function optimize(X, y, p0, iters) {
+    if (X.length === 0) return { p: { ls: p0.ls, sf: p0.sf, sn: p0.sn }, hist: [], iters: 0 };
+    iters = iters || 150;
+    var th = thetaFromParams(p0), step = 0.25, i, k;
+    var cur = logML(X, y, paramsFromTheta(th), false).val, hist = [cur];
+    for (i = 0; i < iters; i++) {
+      var g = logML(X, y, paramsFromTheta(th), true).grad, gn = Math.sqrt(dot(g, g));
+      if (!(gn > 1e-12)) break;
+      var d = [g[0] / gn, g[1] / gn, g[2] / gn], okStep = false;
+      for (k = 0; k < 30; k++) {
+        var cand = [th[0] + step * d[0], th[1] + step * d[1], th[2] + step * d[2]];
+        var pp = paramsFromTheta(cand);
+        // 数值护栏：超参不得跑飞
+        if (pp.ls < 1e-3 || pp.ls > 1e3 || pp.sf < 1e-3 || pp.sf > 1e3 || pp.sn < 1e-6 || pp.sn > 1e3) { step *= 0.5; continue; }
+        var v = logML(X, y, pp, false).val;
+        if (v >= cur) { th = cand; cur = v; step *= 1.15; okStep = true; break; }
+        step *= 0.5;
+      }
+      hist.push(cur);
+      if (!okStep) break;
+    }
+    return { p: paramsFromTheta(th), hist: hist, iters: hist.length - 1 };
+  }
+  // 边际似然曲面多峰（典型陷阱：ℓ 过大 → 把信号全解释成噪声），单起点会卡在局部最优 → 多起点取最优
+  var AUTO_INITS = [
+    { ls: 0.4, sf: 0.7, sn: 0.20 },
+    { ls: 2.5, sf: 1.2, sn: 0.40 },
+    { ls: 5.0, sf: 0.8, sn: 0.15 }
+  ];
+  function optimizeAuto(X, y, iters) {
+    iters = iters || 120;
+    var best = null, i, r, end;
+    for (i = 0; i < AUTO_INITS.length; i++) {
+      r = optimize(X, y, AUTO_INITS[i], iters);
+      end = r.hist[r.hist.length - 1];
+      if (!best || end > best.end) best = { r: r, end: end };
+    }
+    return { p: best.r.p, hist: best.r.hist, iters: best.r.iters, end: best.end, restarts: AUTO_INITS.length };
+  }
+
+  // ---------- 8 条不变量 ----------
+  function selfTest() {
+    var out = [], i, j, k, rng = mulberry32(20260915);
+    function add(name, detail, pass) { out.push({ name: name, detail: detail, pass: !!pass }); }
+
+    // 数据集
+    var X = [], y = [];
+    for (i = 0; i < 12; i++) { X.push(i * 0.8); y.push(Math.sin(i * 0.55) + 0.1 * rnorm(rng)); }
+    var p = { ls: 1.0, sf: 1.2, sn: 0.25 };
+
+    // 1 核矩阵对称 + 半正定 + 平稳（平移不变）
+    var K = kernelMatrix(X, X, p), symErr = 0;
+    for (i = 0; i < K.length; i++) for (j = 0; j < K.length; j++) symErr = Math.max(symErr, Math.abs(K[i][j] - K[j][i]));
+    var ch0 = cholesky(addNoise(K, p.sn));
+    var minQF = Infinity, v, Kv;
+    for (k = 0; k < 30; k++) {
+      v = []; for (i = 0; i < K.length; i++) v.push(rnorm(rng));
+      Kv = []; for (i = 0; i < K.length; i++) { var s = 0; for (j = 0; j < K.length; j++) s += K[i][j] * v[j]; Kv.push(s); }
+      minQF = Math.min(minQF, dot(v, Kv));
+    }
+    var Xs = X.map(function (x) { return x + 3.7; });
+    var Ks2 = kernelMatrix(Xs, Xs, p), shErr = 0;
+    for (i = 0; i < K.length; i++) for (j = 0; j < K.length; j++) shErr = Math.max(shErr, Math.abs(K[i][j] - Ks2[i][j]));
+    add('核矩阵对称 + 半正定（Cholesky 零 jitter 成功）+ RBF 平移不变',
+        'symErr = ' + symErr.toExponential(2) + '；最小二次型 = ' + minQF.toExponential(2) +
+        '；平移 Δ = ' + shErr.toExponential(2),
+        symErr === 0 && ch0 !== null && minQF >= 0 && shErr < 1e-12);
+
+    // 2 Cholesky 解 == 高斯消元解
+    var Ky = addNoise(K, p.sn), L = cholesky(Ky), aC = cholSolve(L, y), aG = gaussSolve(Ky, y);
+    var rel2 = 0;
+    for (i = 0; i < y.length; i++) rel2 = Math.max(rel2, Math.abs(aC[i] - aG[i]) / (Math.abs(aG[i]) + 1e-12));
+    add('Cholesky 解 == 高斯消元解（部分选主元）', 'maxRelErr = ' + rel2.toExponential(2), rel2 < 1e-9);
+
+    // 3 无噪插值：后验均值在训练点 == y，方差 == 0
+    var pNoiseless = { ls: 1.0, sf: 1.2, sn: 1e-6 };
+    var pr = gpPredict(X, y, X, pNoiseless);
+    var meanErr = 0, varMax = 0;
+    for (i = 0; i < X.length; i++) {
+      meanErr = Math.max(meanErr, Math.abs(pr.mu[i] - y[i]));
+      varMax = Math.max(varMax, pr.var[i]);
+    }
+    add('无噪极限：后验均值在训练点 == y，后验方差 == 0（插值性质）',
+        'max|μ−y| = ' + meanErr.toExponential(2) + '；maxVar = ' + varMax.toExponential(2),
+        meanErr < 1e-4 && varMax < 1e-6);
+
+    // 4 训练点后验方差解析恒等式  var_i == σ_n²(1 − σ_n²·[(K+σ_n²I)⁻¹]_ii)
+    var pr2 = gpPredict(X, y, X, p), Kinv = inverseFromChol(pr2.fit.L), idErr = 0;
+    for (i = 0; i < X.length; i++) {
+      var expect = p.sn * p.sn * (1 - p.sn * p.sn * Kinv[i][i]);
+      idErr = Math.max(idErr, Math.abs(pr2.var[i] - expect) / expect);
+    }
+    add('训练点后验方差 == σₙ²(1 − σₙ²·[(K+σₙ²I)⁻¹]ᵢᵢ)（解析恒等式）',
+        'maxRelErr = ' + idErr.toExponential(2), idErr < 1e-8);
+
+    // 5 信息单调性：新增观测后所有测试点后验方差不增
+    var Xte = [], t; for (i = 0; i < 30; i++) Xte.push(i * 0.33);
+    var Xa = X.slice(0, 5), ya = y.slice(0, 5);
+    var Xb = X.slice(0, 9), yb = y.slice(0, 9);
+    var pa = gpPredict(Xa, ya, Xte, p), pb = gpPredict(Xb, yb, Xte, p), worstInc = -Infinity;
+    for (i = 0; i < Xte.length; i++) worstInc = Math.max(worstInc, pb.var[i] - pa.var[i]);
+    add('信息单调性：多加 4 个观测后，所有测试点后验方差不增',
+        '最大增量 = ' + worstInc.toExponential(2) + '（应 ≤ 0）', worstInc <= 1e-9);
+
+    // 6 边际似然的解析梯度 == 中心差分（梯度检验）
+    var th = thetaFromParams(p), eps = 1e-5, maxRel = 0, gAn = logML(X, y, p, true).grad, gNum = [];
+    for (k = 0; k < 3; k++) {
+      var tp = th.slice(), tm = th.slice();
+      tp[k] += eps; tm[k] -= eps;
+      gNum.push((logML(X, y, paramsFromTheta(tp), false).val - logML(X, y, paramsFromTheta(tm), false).val) / (2 * eps));
+    }
+    for (k = 0; k < 3; k++) maxRel = Math.max(maxRel, Math.abs(gAn[k] - gNum[k]) / (Math.abs(gNum[k]) + 1e-9));
+    add('边际似然解析梯度 == 中心差分（梯度检验）',
+        'maxRelErr = ' + maxRel.toExponential(2) + '；∇ = [' + gAn.map(function (v) { return v.toFixed(3); }).join(', ') + ']',
+        maxRel < 1e-5);
+
+    // 7 超参梯度上升：logML 单调非减 + 长度尺度还原
+    var Xt = [], yt = [], truth = { ls: 1.0, sf: 1.0, sn: 0.10 };
+    for (i = 0; i < 50; i++) Xt.push(i * 0.2);
+    // 先验样本：协方差就是 K（不加噪声项），不能用"观测到 0"的后验协方差
+    var Kprior = kernelMatrix(Xt, Xt, truth);
+    var samp = mvnSample(Xt.map(function () { return 0; }), Kprior, 1, rng);
+    for (i = 0; i < Xt.length; i++) yt.push(samp[0][i] + truth.sn * rnorm(rng));
+    var opt = optimizeAuto(Xt, yt, 120);
+    var minD = Infinity;
+    for (i = 1; i < opt.hist.length; i++) minD = Math.min(minD, opt.hist[i] - opt.hist[i - 1]);
+    var lsErr = Math.abs(Math.log(opt.p.ls) - Math.log(truth.ls));
+    var mlT = logML(Xt, yt, truth, false).val;
+    add('多起点梯度上升：边际似然单调非减 + 长度尺度还原',
+        'min Δ = ' + minD.toExponential(2) + '（' + opt.iters + ' 轮 × ' + opt.restarts + ' 起点）；' +
+        '|log ℓ̂ − log ℓ*| = ' + lsErr.toFixed(3) + '；logML ' + mlT.toFixed(2) + ' → ' + opt.end.toFixed(2),
+        minD > -1e-12 && lsErr < 0.5 && opt.end >= mlT - 1e-6);
+
+    // 8 后验采样：蒙特卡洛经验均值/方差 == 解析 μ/σ²
+    var X3 = [1.5, 4.0, 7.5], pr3 = gpPredict(X, y, X3, p), C3 = gpPosteriorCov(X3, p, pr3);
+    var NS = 20000, S = mvnSample(pr3.mu, C3, NS, rng), em = [0, 0, 0], ev = [0, 0, 0];
+    for (t = 0; t < NS; t++) for (i = 0; i < 3; i++) { em[i] += S[t][i] / NS; }
+    for (t = 0; t < NS; t++) for (i = 0; i < 3; i++) { var d2 = S[t][i] - em[i]; ev[i] += d2 * d2 / (NS - 1); }
+    var eMu = 0, eVar = 0;
+    for (i = 0; i < 3; i++) {
+      eMu = Math.max(eMu, Math.abs(em[i] - pr3.mu[i]));
+      eVar = Math.max(eVar, Math.abs(Math.sqrt(ev[i]) - Math.sqrt(pr3.var[i])) / Math.sqrt(pr3.var[i]));
+    }
+    add('后验采样 20000 次：经验均值/标准差 == 解析 μ/σ',
+        'max|Δμ| = ' + eMu.toFixed(4) + '；σ 最大相对误差 = ' + (eVar * 100).toFixed(2) + '%',
+        eMu < 0.03 && eVar < 0.05);
+
+    return out;
+  }
+
+  globalThis.GP = {
+    mulberry32: mulberry32, rnorm: rnorm, dot: dot,
+    kernelMatrix: kernelMatrix, addNoise: addNoise,
+    cholesky: cholesky, cholJitter: cholJitter, forwardSolve: forwardSolve, backSolve: backSolve,
+    cholSolve: cholSolve, cholLogDet: cholLogDet, inverseFromChol: inverseFromChol, gaussSolve: gaussSolve,
+    gpFit: gpFit, gpPredict: gpPredict, gpPosteriorCov: gpPosteriorCov, mvnSample: mvnSample,
+    logML: logML, optimize: optimize, optimizeAuto: optimizeAuto,
+    paramsFromTheta: paramsFromTheta, thetaFromParams: thetaFromParams,
+    selfTest: selfTest
+  };
+})();
+</script>
+
+<script id="ui">
+(function () {
+  if (typeof document === 'undefined') return;
+  var G = globalThis.GP;
+  var X0 = 0, X1 = 10, Y0 = -3, Y1 = 3;
+  var X = [], Y = [];
+  var P = { ls: 1.0, sf: 1.0, sn: 0.10 };
+  var mlHist = null, samples = null, rng = G.mulberry32(4242);
+
+  var LS_MIN = 0.1, LS_MAX = 6, SF_MIN = 0.1, SF_MAX = 3, SN_MIN = 0.01, SN_MAX = 1.5;
+  function logMap(t, a, b) { return Math.exp(Math.log(a) + (Math.log(b) - Math.log(a)) * t / 1000); }
+  function logInv(v, a, b) { return 1000 * (Math.log(v) - Math.log(a)) / (Math.log(b) - Math.log(a)); }
+
+  function datasets(name) {
+    var g = G.mulberry32(99), i, x, out = { X: [], Y: [] };
+    if (name === 'sin') { for (i = 0; i < 14; i++) { x = 0.3 + i * 0.72; out.X.push(x); out.Y.push(Math.sin(x * 0.85) * 1.3 + 0.12 * G.rnorm(g)); } }
+    else if (name === 'sparse') { [[1.2, -0.6], [3.4, 1.5], [6.1, 0.4], [8.6, -1.3]].forEach(function (d) { out.X.push(d[0]); out.Y.push(d[1]); }); }
+    else if (name === 'step') { [[0.8, -1.4], [2.2, -1.2], [3.6, -1.5], [5.2, 1.3], [6.6, 1.1], [8.2, 1.5], [9.4, 1.2]].forEach(function (d) { out.X.push(d[0]); out.Y.push(d[1]); }); }
+    else { out.X = []; out.Y = []; }
+    return out;
+  }
+
+  var plot = document.getElementById('plot'), ctx = plot.getContext('2d');
+  function fitCanvas(cv) {
+    var dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    var c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { c: c, w: w, h: h };
+  }
+  function px(x, w, pad) { return pad.l + (w - pad.l - pad.r) * (x - X0) / (X1 - X0); }
+  function py(y, h, pad) { return pad.t + (h - pad.t - pad.b) * (Y1 - y) / (Y1 - Y0); }
+  function invPx(pxv, w, pad) { return X0 + (pxv - pad.l) / (w - pad.l - pad.r) * (X1 - X0); }
+  function invPy(pyv, h, pad) { return Y1 - (pyv - pad.t) / (h - pad.t - pad.b) * (Y1 - Y0); }
+
+  var lastPad = null;
+  function draw() {
+    var f = fitCanvas(plot), c = f.c, w = f.w, h = f.h;
+    var pad = { l: 44, r: 14, t: 14, b: 30 }; lastPad = pad;
+    c.clearRect(0, 0, w, h);
+    // 网格
+    c.strokeStyle = '#eef0f4'; c.lineWidth = 1; c.fillStyle = '#8b95a3'; c.font = '11px monospace';
+    c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (var gy = -3; gy <= 3; gy++) {
+      var y0 = py(gy, h, pad);
+      c.beginPath(); c.moveTo(pad.l, y0); c.lineTo(w - pad.r, y0); c.stroke();
+      c.fillText(gy.toFixed(0), pad.l - 8, y0);
+    }
+    c.textAlign = 'center'; c.textBaseline = 'top';
+    for (var gx = 0; gx <= 10; gx += 2) {
+      var x0 = px(gx, w, pad);
+      c.beginPath(); c.moveTo(x0, pad.t); c.lineTo(x0, h - pad.b); c.stroke();
+      c.fillText(String(gx), x0, h - pad.b + 6);
+    }
+    c.strokeStyle = '#d5d9e0'; c.strokeRect(pad.l, pad.t, w - pad.l - pad.r, h - pad.t - pad.b);
+
+    if (!X.length) {
+      c.fillStyle = '#8b95a3'; c.font = '13px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('点击画布添加数据点，或选择上方预设数据集', w / 2, h / 2);
+      return;
+    }
+    // 测试网格
+    var M = 220, Xte = new Array(M), i;
+    for (i = 0; i < M; i++) Xte[i] = X0 + (X1 - X0) * i / (M - 1);
+    var pr = G.gpPredict(X, Y, Xte, P);
+    if (!pr) return;
+
+    // 后验采样
+    if (document.getElementById('cb-samp').checked && X.length <= 40) {
+      if (!samples || samples.ref !== X.length + '|' + P.ls + '|' + P.sf + '|' + P.sn) {
+        var C = G.gpPosteriorCov(Xte, P, pr);
+        samples = { ref: X.length + '|' + P.ls + '|' + P.sf + '|' + P.sn, S: G.mvnSample(pr.mu, C, 6, rng) };
+      }
+      c.strokeStyle = '#b9c0cc'; c.lineWidth = 1;
+      for (var s = 0; s < samples.S.length; s++) {
+        c.beginPath();
+        for (i = 0; i < M; i++) { var xx = px(Xte[i], w, pad), yy = py(samples.S[s][i], h, pad); if (i === 0) c.moveTo(xx, yy); else c.lineTo(xx, yy); }
+        c.stroke();
+      }
+    }
+    // 置信带 ±2σ
+    c.beginPath();
+    for (i = 0; i < M; i++) { var xa = px(Xte[i], w, pad), ya = py(pr.mu[i] + 2 * Math.sqrt(pr.var[i]), h, pad); if (i === 0) c.moveTo(xa, ya); else c.lineTo(xa, ya); }
+    for (i = M - 1; i >= 0; i--) { var xb = px(Xte[i], w, pad), yb = py(pr.mu[i] - 2 * Math.sqrt(pr.var[i]), h, pad); c.lineTo(xb, yb); }
+    c.closePath(); c.fillStyle = 'rgba(37,99,235,0.16)'; c.fill();
+    // 均值
+    c.beginPath(); c.strokeStyle = '#2563eb'; c.lineWidth = 2.2;
+    for (i = 0; i < M; i++) { var xm = px(Xte[i], w, pad), ym = py(pr.mu[i], h, pad); if (i === 0) c.moveTo(xm, ym); else c.lineTo(xm, ym); }
+    c.stroke();
+    // 数据点
+    for (i = 0; i < X.length; i++) {
+      c.beginPath(); c.arc(px(X[i], w, pad), py(Y[i], h, pad), 4.5, 0, 6.3);
+      c.fillStyle = '#1f2328'; c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke();
+    }
+    updateStat(pr);
+    drawK();
+  }
+
+  function updateStat(pr) {
+    var ml = X.length ? G.logML(X, Y, P, true) : { val: 0, grad: [0, 0, 0] };
+    var gn = Math.sqrt(G.dot(ml.grad, ml.grad));
+    document.getElementById('stat').innerHTML =
+      '<div>观测数 n<b>' + X.length + '</b></div>' +
+      '<div>log p(y|X,θ)<b>' + ml.val.toFixed(3) + '</b></div>' +
+      '<div>‖∇‖<b>' + gn.toFixed(4) + '</b></div>' +
+      '<div>ℓ / σf / σn<b>' + P.ls.toFixed(2) + ' / ' + P.sf.toFixed(2) + ' / ' + P.sn.toFixed(3) + '</b></div>' +
+      '<div>测试点平均 σ<b>' + (X.length ? (pr.mu.reduce(function (a, _, i) { return a + Math.sqrt(pr.var[i]); }, 0) / pr.mu.length).toFixed(4) : '—') + '</b></div>';
+  }
+
+  function drawK() {
+    var host = document.getElementById('matK');
+    if (!X.length) { host.innerHTML = '<p class="note">暂无数据。</p>'; document.getElementById('kernote').textContent = ''; return; }
+    var idx = X.map(function (v, i) { return i; }).sort(function (a, b) { return X[a] - X[b]; });
+    var Xs = idx.map(function (i) { return X[i]; });
+    var K = G.addNoise(G.kernelMatrix(Xs, Xs, P), P.sn);
+    var n = K.length, h = '<table><thead><tr><th></th>';
+    for (var j = 0; j < n; j++) h += '<th>' + Xs[j].toFixed(1) + '</th>';
+    h += '</tr></thead><tbody>';
+    var mx = 0;
+    for (var i = 0; i < n; i++) for (j = 0; j < n; j++) mx = Math.max(mx, K[i][j]);
+    for (i = 0; i < n; i++) {
+      h += '<tr><th>' + Xs[i].toFixed(1) + '</th>';
+      for (j = 0; j < n; j++) {
+        var a = Math.pow(K[i][j] / mx, 0.6);
+        h += '<td class="heat" style="background:rgba(37,99,235,' + (0.03 + 0.6 * a).toFixed(3) + ')">' + K[i][j].toFixed(2) + '</td>';
+      }
+      h += '</tr>';
+    }
+    host.innerHTML = h + '</tbody></table>';
+    var ch = G.cholesky(K);
+    document.getElementById('kernote').textContent = 'Cholesky 分解' + (ch ? '成功' : '需要 jitter') +
+      '，log|K+σₙ²I| = ' + (ch ? G.cholLogDet(ch).toFixed(3) : '—') + '，条件数粗估 κ ≈ ' +
+      (ch ? (function () { var d = 1, i2; for (i2 = 0; i2 < n; i2++) d *= ch[i2][i2]; return (d ? Math.pow(mx, n) / (d * d) : 0).toExponential(1); })() : '—');
+  }
+
+  function drawML() {
+    var cv = document.getElementById('mlcv'), f = fitCanvas(cv), c = f.c, w = f.w, h = f.h;
+    var pad = { l: 52, r: 12, t: 12, b: 22 };
+    c.clearRect(0, 0, w, h);
+    if (!mlHist || mlHist.length < 2) {
+      c.fillStyle = '#8b95a3'; c.font = '12px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('尚未运行优化', w / 2, h / 2); return;
+    }
+    var lo = Math.min.apply(null, mlHist), hi = Math.max.apply(null, mlHist), padv = (hi - lo) * 0.1 || 1;
+    lo -= padv; hi += padv;
+    function XX(i) { return pad.l + (w - pad.l - pad.r) * i / (mlHist.length - 1); }
+    function YY(v) { return pad.t + (h - pad.t - pad.b) * (1 - (v - lo) / (hi - lo)); }
+    c.strokeStyle = '#eef0f4'; c.fillStyle = '#8b95a3'; c.font = '10px monospace'; c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (var k = 0; k <= 3; k++) {
+      var y0 = pad.t + (h - pad.t - pad.b) * k / 3;
+      c.beginPath(); c.moveTo(pad.l, y0); c.lineTo(w - pad.r, y0); c.stroke();
+      c.fillText((hi - (hi - lo) * k / 3).toFixed(1), pad.l - 6, y0);
+    }
+    c.strokeStyle = '#2563eb'; c.lineWidth = 2; c.beginPath();
+    for (var i = 0; i < mlHist.length; i++) { if (i === 0) c.moveTo(XX(i), YY(mlHist[i])); else c.lineTo(XX(i), YY(mlHist[i])); }
+    c.stroke();
+    c.fillStyle = '#2563eb'; c.beginPath(); c.arc(XX(0), YY(mlHist[0]), 2.5, 0, 6.3); c.fill();
+    c.fillStyle = '#067647'; c.beginPath(); c.arc(XX(mlHist.length - 1), YY(mlHist[mlHist.length - 1]), 3, 0, 6.3); c.fill();
+    c.fillStyle = '#5b6472'; c.font = '10px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'top';
+    c.fillText('迭代轮次 →', pad.l + (w - pad.l - pad.r) / 2, h - 14);
+  }
+
+  function syncSliders() {
+    document.getElementById('sl-ls').value = Math.round(logInv(P.ls, LS_MIN, LS_MAX));
+    document.getElementById('sl-sf').value = Math.round(logInv(P.sf, SF_MIN, SF_MAX));
+    document.getElementById('sl-sn').value = Math.round(logInv(P.sn, SN_MIN, SN_MAX));
+    document.getElementById('v-ls').textContent = P.ls.toFixed(3);
+    document.getElementById('v-sf').textContent = P.sf.toFixed(3);
+    document.getElementById('v-sn').textContent = P.sn.toFixed(4);
+  }
+  function redraw() { samples = null; draw(); }
+
+  ['ls', 'sf', 'sn'].forEach(function (k, i) {
+    var ranges = [[LS_MIN, LS_MAX], [SF_MIN, SF_MAX], [SN_MIN, SN_MAX]];
+    document.getElementById('sl-' + k).addEventListener('input', function () {
+      P[k] = logMap(parseFloat(this.value), ranges[i][0], ranges[i][1]);
+      document.getElementById('v-' + k).textContent = P[k].toFixed(k === 'sn' ? 4 : 3);
+      samples = null; draw();
+    });
+  });
+
+  plot.addEventListener('click', function (e) {
+    if (!lastPad) return;
+    var r = plot.getBoundingClientRect(), w = plot.clientWidth, h = plot.clientHeight;
+    var mx = e.clientX - r.left, my = e.clientY - r.top;
+    var x = invPx(mx, w, lastPad), y = invPy(my, h, lastPad);
+    if (x < X0 || x > X1 || y < Y0 || y > Y1) return;
+    if (e.shiftKey) {
+      if (!X.length) return;
+      var best = 0, bd = Infinity;
+      for (var i = 0; i < X.length; i++) {
+        var d = Math.pow(X[i] - x, 2) + Math.pow(Y[i] - y, 2);
+        if (d < bd) { bd = d; best = i; }
+      }
+      X.splice(best, 1); Y.splice(best, 1);
+    } else { X.push(x); Y.push(y); }
+    mlHist = null; drawML(); redraw();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.pill'), function (pil) {
+    pil.onclick = function () { var d = datasets(pil.getAttribute('data-d')); X = d.X; Y = d.Y; mlHist = null; drawML(); redraw(); };
+  });
+  document.getElementById('btn-clear').onclick = function () { X = []; Y = []; mlHist = null; drawML(); redraw(); };
+  document.getElementById('btn-undo').onclick = function () { X.pop(); Y.pop(); mlHist = null; drawML(); redraw(); };
+  document.getElementById('cb-samp').onchange = redraw;
+  document.getElementById('btn-opt').onclick = function () {
+    if (!X.length) return;
+    var b = this; b.disabled = true; b.textContent = '优化中…';
+    setTimeout(function () {
+      var before = G.logML(X, Y, P, false).val;
+      var r = G.optimizeAuto(X, Y, 120);
+      P = r.p; mlHist = r.hist; syncSliders(); redraw(); drawML();
+      var minD = Infinity;
+      for (var i = 1; i < r.hist.length; i++) minD = Math.min(minD, r.hist[i] - r.hist[i - 1]);
+      document.getElementById('optinfo').textContent = r.iters + ' 轮：' + r.hist[0].toFixed(2) + ' → ' +
+        r.hist[r.hist.length - 1].toFixed(2) + '（min Δ = ' + (minD > -1e-12 ? '≥0 ✓' : minD.toExponential(1)) + '）' +
+        '，ℓ=' + P.ls.toFixed(2) + ' σf=' + P.sf.toFixed(2) + ' σn=' + P.sn.toFixed(3);
+      document.getElementById('mlnote').textContent = '绿点为收敛终点。共 ' + r.restarts + ' 个起点取最优（边际似然曲面多峰，' +
+        '单起点常被「ℓ 过大→全是噪声」的局部最优卡住，本例起点 logML = ' + before.toFixed(2) + '）。回溯线搜索保证每轮不下降。';
+      b.disabled = false; b.textContent = '多起点优化超参';
+    }, 30);
+  };
+  window.addEventListener('resize', function () { draw(); drawML(); });
+
+  function runChecks() {
+    var res = G.selfTest(), h = '', pass = 0;
+    res.forEach(function (r, i) {
+      if (r.pass) pass++;
+      h += '<tr><td class="s"><span class="' + (r.pass ? 'ok' : 'bad') + '">' + (r.pass ? 'PASS' : 'FAIL') +
+           '</span></td><td><b>' + (i + 1) + '. ' + r.name.replace(/</g, '&lt;') + '</b></td><td class="d">' +
+           r.detail.replace(/</g, '&lt;') + '</td></tr>';
+    });
+    document.getElementById('chk').innerHTML = h;
+    document.getElementById('banner').className = 'banner' + (pass === res.length ? '' : ' bad');
+    document.getElementById('banner').textContent = pass === res.length
+      ? '全部 ' + pass + '/' + res.length + ' 项不变量通过（浏览器内实时计算）'
+      : '通过 ' + pass + '/' + res.length + ' 项，存在失败项';
+  }
+
+  var d0 = datasets('sin'); X = d0.X; Y = d0.Y;
+  syncSliders(); draw(); drawML(); runChecks();
+})();
+</script>
+</body>
+</html>
