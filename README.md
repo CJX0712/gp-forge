@@ -1,5 +1,12 @@
 # gp-forge
 
+<p align="center">
+  <a href="https://github.com/CJX0712/gp-forge/actions/workflows/ci.yml"><img src="https://github.com/CJX0712/gp-forge/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="https://github.com/CJX0712/gp-forge/releases"><img src="https://img.shields.io/github/v/release/CJX0712/gp-forge?sort=semver" alt="release"></a>
+  <a href="https://github.com/CJX0712/gp-forge/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CJX0712/gp-forge" alt="license"></a>
+  <img src="https://img.shields.io/badge/author-%E6%99%A8%E6%98%9F-1f6feb" alt="author">
+</p>
+
 高斯过程回归（Gaussian Process Regression）实验室 —— **零依赖、零构建的单文件 HTML**，在浏览器里跑完整的核矩阵构造、Cholesky 推断、边际似然解析梯度与超参梯度上升，并自带 8 条可交叉验证的不变量自检。
 
 打开 `index.html` 即可用，无需服务器、无需 npm install。
